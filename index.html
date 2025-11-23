@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>編碼轉換工具 (URL / Base64)</title>
+    <title>全能編碼轉換工具 (URL / Base64 / Image)</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48dGV4dCB5PSIuOWVtIiBmb250LXNpemU9IjkwIj7ih4Q8L3RleHQ+PC9zdmc+">
     <style>
         body {
@@ -73,6 +73,7 @@
             border-radius: 50px;
             align-self: center;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            flex-wrap: wrap;
         }
 
         .mode-group {
@@ -94,6 +95,7 @@
             user-select: none;
             font-weight: bold;
             color: #aaa;
+            white-space: nowrap;
         }
 
         .radio-btn:checked+.radio-label {
@@ -104,8 +106,15 @@
 
         .radio-btn[name="action"]:checked+.radio-label {
             background: #00f2fe;
-            /* 動作按鈕用不同顏色 */
             color: #000;
+        }
+
+        /* 禁用狀態 */
+        .radio-btn:disabled+.radio-label {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background: transparent;
+            color: #aaa;
         }
 
         /* 下方輸入區 (Input) */
@@ -118,10 +127,43 @@
             padding: 15px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             border: 1px solid #444;
+            position: relative;
+            /* For drop zone overlay */
         }
 
         .input-container textarea {
             color: #e0e0e0;
+        }
+
+        /* 圖片拖曳區 */
+        .drop-zone {
+            display: none;
+            flex: 1;
+            border: 2px dashed #555;
+            border-radius: 8px;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: #888;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .drop-zone.active {
+            display: flex;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: #4facfe;
+            background: rgba(79, 172, 254, 0.1);
+            color: #fff;
+        }
+
+        .drop-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
         }
 
         .copy-btn {
@@ -150,9 +192,8 @@
 
 <body>
 
-    <h1>🔄 編碼轉換器</h1>
+    <h1>🔄 全能編碼轉換器</h1>
 
-    <!-- 上方：結果顯示 -->
     <div class="output-container">
         <div class="label">
             <span>轉換結果 (Output)</span>
@@ -162,31 +203,38 @@
         <div id="errorMsg" class="error-msg">轉換錯誤</div>
     </div>
 
-    <!-- 中間：控制面板 -->
     <div class="controls">
-        <!-- 模式選擇 -->
         <div class="mode-group">
             <input type="radio" id="modeUrl" name="mode" class="radio-btn" value="url" checked>
             <label for="modeUrl" class="radio-label">URL</label>
 
             <input type="radio" id="modeBase64" name="mode" class="radio-btn" value="base64">
             <label for="modeBase64" class="radio-label">Base64</label>
+
+            <input type="radio" id="modeImage" name="mode" class="radio-btn" value="image">
+            <label for="modeImage" class="radio-label">Image</label>
         </div>
 
-        <!-- 動作選擇 -->
         <div class="mode-group">
             <input type="radio" id="actEncode" name="action" class="radio-btn" value="encode" checked>
-            <label for="actEncode" class="radio-label">Encode (編碼)</label>
+            <label for="actEncode" class="radio-label">Encode</label>
 
             <input type="radio" id="actDecode" name="action" class="radio-btn" value="decode">
-            <label for="actDecode" class="radio-label">Decode (解碼)</label>
+            <label for="actDecode" class="radio-label">Decode</label>
         </div>
     </div>
 
-    <!-- 下方：輸入區 -->
     <div class="input-container">
-        <div class="label">輸入內容 (Input)</div>
+        <div class="label" id="inputLabel">輸入內容 (Input)</div>
+        
         <textarea id="input" placeholder="請在此輸入要轉換的文字..."></textarea>
+        
+        <div id="dropZone" class="drop-zone">
+            <div class="drop-icon">📁</div>
+            <div>點擊選擇或拖曳圖片至此</div>
+            <div style="font-size: 0.8em; margin-top: 5px; opacity: 0.7;">支援 JPG, PNG, GIF, WEBP</div>
+            <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
     </div>
 
     <script>
@@ -194,18 +242,120 @@
         const outputArea = document.getElementById('output');
         const errorMsg = document.getElementById('errorMsg');
         const copyBtn = document.getElementById('copyBtn');
+        
+        // Image 相關元素
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const inputLabel = document.getElementById('inputLabel');
+        const actEncode = document.getElementById('actEncode');
+        const actDecode = document.getElementById('actDecode');
+
+        // 初始化
+        updateUIState();
 
         // 監聽所有 radio button 的變化
         document.querySelectorAll('input[type=radio]').forEach(radio => {
-            radio.addEventListener('change', convert);
+            radio.addEventListener('change', () => {
+                updateUIState();
+                if (document.querySelector('input[name="mode"]:checked').value !== 'image') {
+                    convertText();
+                }
+            });
         });
 
-        // 監聽輸入變化
-        inputArea.addEventListener('input', convert);
+        // 監聽文字輸入變化
+        inputArea.addEventListener('input', convertText);
 
-        function convert() {
-            const text = inputArea.value;
+        // 圖片上傳相關監聽
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                processImage(e.target.files[0]);
+            }
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                processImage(e.dataTransfer.files[0]);
+            }
+        });
+
+        // 更新介面狀態 (切換模式時)
+        function updateUIState() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
+            
+            if (mode === 'image') {
+                // Image 模式：隱藏文字框，顯示拖曳區
+                inputArea.style.display = 'none';
+                dropZone.classList.add('active');
+                inputLabel.textContent = '上傳圖片 (Image Input)';
+                
+                // 圖片轉 Base64 必定是 Encode，禁用 Decode
+                actEncode.checked = true;
+                actDecode.disabled = true;
+                
+                // 清空輸出，等待上傳
+                if(!outputArea.value.startsWith('data:image')) {
+                    outputArea.value = '';
+                }
+            } else {
+                // 文字模式：顯示文字框，隱藏拖曳區
+                inputArea.style.display = 'block';
+                dropZone.classList.remove('active');
+                inputLabel.textContent = '輸入內容 (Input)';
+                
+                // 恢復 Decode 選項
+                actDecode.disabled = false;
+                
+                // 重新觸發一次轉換以顯示正確內容
+                convertText();
+            }
+        }
+
+        // 圖片處理邏輯
+        function processImage(file) {
+            if (!file.type.startsWith('image/')) {
+                outputArea.value = '';
+                errorMsg.textContent = '錯誤：請上傳圖片檔案';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            errorMsg.style.display = 'none';
+            outputArea.value = '轉換中...';
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                outputArea.value = e.target.result; // 結果已包含 data:image/...
+            };
+            reader.onerror = () => {
+                outputArea.value = '';
+                errorMsg.textContent = '讀取圖片失敗';
+                errorMsg.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 文字轉換邏輯
+        function convertText() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            
+            // 如果是圖片模式，不執行此函式
+            if (mode === 'image') return;
+
+            const text = inputArea.value;
             const action = document.querySelector('input[name="action"]:checked').value;
 
             if (!text) {
@@ -226,10 +376,8 @@
                     }
                 } else if (mode === 'base64') {
                     if (action === 'encode') {
-                        // 處理 UTF-8 字元
                         result = btoa(unescape(encodeURIComponent(text)));
                     } else {
-                        // 處理 UTF-8 字元
                         result = decodeURIComponent(escape(atob(text)));
                     }
                 }
@@ -244,6 +392,8 @@
 
         // 複製功能
         copyBtn.addEventListener('click', () => {
+            if (!outputArea.value) return;
+            
             outputArea.select();
             document.execCommand('copy');
 
