@@ -158,7 +158,9 @@
         function convertText() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
             if (mode === 'image') return;
-            const text = inputArea.value;
+            
+            // 加上 trim() 移除前後多餘空白與換行
+            const text = inputArea.value.trim();
             const action = document.querySelector('input[name="action"]:checked').value;
 
             if (!text) {
@@ -179,10 +181,14 @@
                     const symbols = '~!@#$%^&*()_+-=';
                     if (action === 'encode') {
                         result = text.split('').map((char, i, arr) => {
-                            if (char === ' ') return char;
+                            // 改用正則表達式 \s 來略過所有空白字元 (包含空格與換行)
+                            if (/\s/.test(char)) return char;
+                            
                             let newChar = /[a-zA-Z]/.test(char) ? (Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()) : char;
                             let nextChar = arr[i + 1];
-                            if (nextChar && nextChar !== ' ') {
+                            
+                            // 只有當下一個字元存在且不是空白字元時，才插入干擾符號
+                            if (nextChar && !/\s/.test(nextChar)) {
                                 return newChar + symbols[Math.floor(Math.random() * symbols.length)];
                             }
                             return newChar;
@@ -198,7 +204,6 @@
                 errorMsg.style.display = 'block';
             }
         }
-
         copyBtn.addEventListener('click', () => {
             if (!outputArea.value) return;
             outputArea.select();
